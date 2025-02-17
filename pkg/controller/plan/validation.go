@@ -6,11 +6,10 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"net"
 	"path"
 	"strconv"
 
-	k8snet "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
+	net "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	api "github.com/konveyor/forklift-controller/pkg/apis/forklift/v1beta1"
 	refapi "github.com/konveyor/forklift-controller/pkg/apis/forklift/v1beta1/ref"
 	"github.com/konveyor/forklift-controller/pkg/controller/plan/adapter"
@@ -640,18 +639,11 @@ func (r *Reconciler) validateTransferNetwork(plan *api.Plan) (err error) {
 		Reason:   NotFound,
 		Message:  "Transfer network is not valid.",
 	}
-	notValid := libcnd.Condition{
-		Type:     TransferNetNotValid,
-		Status:   True,
-		Category: Critical,
-		Reason:   NotValid,
-		Message:  "Transfer network default route annotation is not a valid IP address.",
-	}
 	key := client.ObjectKey{
 		Namespace: plan.Spec.TransferNetwork.Namespace,
 		Name:      plan.Spec.TransferNetwork.Name,
 	}
-	netAttachDef := &k8snet.NetworkAttachmentDefinition{}
+	netAttachDef := &net.NetworkAttachmentDefinition{}
 	err = r.Get(context.TODO(), key, netAttachDef)
 	if k8serr.IsNotFound(err) {
 		err = nil
@@ -660,15 +652,6 @@ func (r *Reconciler) validateTransferNetwork(plan *api.Plan) (err error) {
 	}
 	if err != nil {
 		err = liberr.Wrap(err)
-		return
-	}
-	route, found := netAttachDef.Annotations[AnnForkliftNetworkRoute]
-	if !found {
-		return
-	}
-	ip := net.ParseIP(route)
-	if ip == nil {
-		plan.Status.SetCondition(notValid)
 	}
 
 	return

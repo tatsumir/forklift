@@ -2,13 +2,11 @@ package plan
 
 import (
 	"context"
-	"encoding/json"
 	"encoding/xml"
 	"errors"
 	"fmt"
 	"io"
 	"math/rand"
-	"net"
 	"net/http"
 	"os"
 	"path"
@@ -17,7 +15,6 @@ import (
 	"strings"
 	"time"
 
-	k8snet "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	planbase "github.com/konveyor/forklift-controller/pkg/controller/plan/adapter/base"
 	"github.com/konveyor/forklift-controller/pkg/controller/plan/util"
 	"github.com/konveyor/forklift-controller/pkg/controller/provider/web"
@@ -57,10 +54,7 @@ import (
 // Annotations
 const (
 	// Transfer network annotation (value=network-attachment-definition name)
-	AnnTransferNetwork = "k8s.v1.cni.cncf.io/networks"
-	// Annotation to specify the default route for the transfer network.
-	// To be set on the transfer network NAD by the end user.
-	AnnForkliftNetworkRoute = "forklift.konveyor.io/route"
+	AnnDefaultNetwork = "v1.multus-cni.io/default-network"
 	// Contains validations for a Kubevirt VM. Needs to be removed when
 	// creating a VM from a template.
 	AnnKubevirtValidations = "vm.kubevirt.io/validations"
@@ -1243,12 +1237,9 @@ func (r *KubeVirt) dataVolumes(vm *plan.VMStatus, secret *core.Secret, configMap
 		annotations[planbase.AnnRetainAfterCompletion] = "true"
 	}
 	if r.Plan.Spec.TransferNetwork != nil {
-		err = r.setTransferNetwork(annotations)
-		if err != nil {
-			return
-		}
+		annotations[AnnDefaultNetwork] = path.Join(
+			r.Plan.Spec.TransferNetwork.Namespace, r.Plan.Spec.TransferNetwork.Name)
 	}
-
 	if r.Plan.Spec.Warm || !r.Destination.Provider.IsHost() || r.Plan.IsSourceProviderOCP() {
 		// Set annotation for WFFC storage classes. Note that we create data volumes while
 		// running a cold migration to the local cluster only when the source is either OpenShift
@@ -1786,10 +1777,8 @@ func (r *KubeVirt) guestConversionPod(vm *plan.VMStatus, vmVolumes []cnv.Volume,
 	// pod annotations
 	annotations := map[string]string{}
 	if r.Plan.Spec.TransferNetwork != nil {
-		err = r.setTransferNetwork(annotations)
-		if err != nil {
-			return
-		}
+		annotations[AnnDefaultNetwork] = path.Join(
+			r.Plan.Spec.TransferNetwork.Namespace, r.Plan.Spec.TransferNetwork.Name)
 	}
 	// pod
 	pod = &core.Pod{
@@ -2407,42 +2396,6 @@ func (r *KubeVirt) vmLabels(vmRef ref.Ref) (labels map[string]string) {
 func (r *KubeVirt) vmAllButMigrationLabels(vmRef ref.Ref) (labels map[string]string) {
 	labels = r.vmLabels(vmRef)
 	delete(labels, kMigration)
-	return
-}
-
-func (r *KubeVirt) setTransferNetwork(annotations map[string]string) (err error) {
-	key := client.ObjectKey{
-		Namespace: r.Plan.Spec.TransferNetwork.Namespace,
-		Name:      r.Plan.Spec.TransferNetwork.Name,
-	}
-	netAttachDef := &k8snet.NetworkAttachmentDefinition{}
-	err = r.Get(context.TODO(), key, netAttachDef)
-	if err != nil {
-		err = liberr.Wrap(err)
-		return
-	}
-	nse := k8snet.NetworkSelectionElement{
-		Namespace: r.Plan.Spec.TransferNetwork.Namespace,
-		Name:      r.Plan.Spec.TransferNetwork.Name,
-	}
-	route, found := netAttachDef.Annotations[AnnForkliftNetworkRoute]
-	if found {
-		ip := net.ParseIP(route)
-		if ip != nil {
-			nse.GatewayRequest = []net.IP{ip}
-		} else {
-			err = liberr.New(
-				"Transfer network default route annotation is not a valid IP address.",
-				"route", route)
-			return
-		}
-	}
-	transferNetwork, err := json.Marshal([]k8snet.NetworkSelectionElement{nse})
-	if err != nil {
-		err = liberr.Wrap(err)
-		return
-	}
-	annotations[AnnTransferNetwork] = string(transferNetwork)
 	return
 }
 
