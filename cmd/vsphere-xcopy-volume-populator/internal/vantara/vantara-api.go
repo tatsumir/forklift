@@ -2,7 +2,6 @@ package vantara
 
 import (
 	"bytes"
-	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -116,12 +115,8 @@ func MakeHTTPRequest(methodType, url string, body, headers map[string]string, au
 	klog.Infof("Headers: %v", headers)
 	klog.Infof("Auth Type: %s", authType)
 
-	// Disable TLS certificate verification
-	client := &http.Client{
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-		},
-	}
+	// Create HTTP client
+	client := &http.Client{}
 
 	// Create request body
 	var reqBody io.Reader
