@@ -25,10 +25,10 @@ type VantaraCloner struct {
 	api VantaraStorageAPI
 }
 
-func NewVantaraClonner(hostname, username, password string) (VantaraCloner, error) {
+func NewVantaraClonner(hostname, username, password string, skipSSLVerification bool) (VantaraCloner, error) {
 	vantaraObj := make(VantaraObject)
 	envStorage, _ := getStorageEnvVars()
-	v := getNewVantaraStorageAPIfromEnv(envStorage, vantaraObj)
+	v := getNewVantaraStorageAPIfromEnv(envStorage, vantaraObj, skipSSLVerification)
 
 	return VantaraCloner{api: *v}, nil
 }
@@ -66,9 +66,9 @@ func getStorageEnvVars() (map[string]interface{}, error) {
 	return storageEnvVars, nil
 }
 
-func getNewVantaraStorageAPIfromEnv(envVars map[string]interface{}, vantaraObj VantaraObject) *VantaraStorageAPI {
+func getNewVantaraStorageAPIfromEnv(envVars map[string]interface{}, vantaraObj VantaraObject, skipSSLVerification bool) *VantaraStorageAPI {
 	vantaraObj["envHostGroupIds"] = envVars["hostGroupIds"].([]string)
-	return NewVantaraStorageAPI(envVars["storageId"].(string), envVars["restServerIP"].(string), envVars["port"].(string), envVars["userID"].(string), envVars["password"].(string), vantaraObj)
+	return NewVantaraStorageAPI(envVars["storageId"].(string), envVars["restServerIP"].(string), envVars["port"].(string), envVars["userID"].(string), envVars["password"].(string), vantaraObj, skipSSLVerification)
 }
 
 func (v *VantaraCloner) CurrentMappedGroups(lun populator.LUN, context populator.MappingContext) ([]string, error) {

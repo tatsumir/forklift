@@ -108,15 +108,12 @@ func (api *BlockStorageAPI) APIVersion() string {
 	return fmt.Sprintf("https://%s:%s/ConfigurationManager/configuration/version", api.GumIPAddr, api.Port)
 }
 
-func MakeHTTPRequest(methodType, url string, body, headers map[string]string, authType, authValue string) (map[string]interface{}, error) {
+func MakeHTTPRequest(methodType, url string, body, headers map[string]string, authType, authValue string, client *http.Client) (map[string]interface{}, error) {
 	klog.Infof("Making HTTP request:")
 	klog.Infof("Method: %s", methodType)
 	klog.Infof("URL: %s", url)
 	klog.Infof("Headers: %v", headers)
 	klog.Infof("Auth Type: %s", authType)
-
-	// Create HTTP client
-	client := &http.Client{}
 
 	// Create request body
 	var reqBody io.Reader
@@ -163,7 +160,7 @@ func MakeHTTPRequest(methodType, url string, body, headers map[string]string, au
 		resp.Body.Close()
 		klog.Errorf("Service unavailable, retrying...")
 		time.Sleep(60 * time.Second)
-		return MakeHTTPRequest(methodType, url, body, headers, authType, authValue)
+		return MakeHTTPRequest(methodType, url, body, headers, authType, authValue, client)
 	}
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted {
@@ -176,9 +173,9 @@ func MakeHTTPRequest(methodType, url string, body, headers map[string]string, au
 	return result, nil
 }
 
-func (api *BlockStorageAPI) checkUpdate(jobID string, headers map[string]string) (map[string]interface{}, error) {
+func (api *BlockStorageAPI) checkUpdate(jobID string, headers map[string]string, client *http.Client) (map[string]interface{}, error) {
 	url := api.Job(jobID)
-	return MakeHTTPRequest("GET", url, nil, headers, "", "")
+	return MakeHTTPRequest("GET", url, nil, headers, "", "", client)
 
 }
 
@@ -205,9 +202,9 @@ func CheckAPIVersion(apiVersion string, requiredMajorVersion, requiredMinorVersi
 	return nil
 }
 
-func (api *BlockStorageAPI) InvokeAsyncCommand(methodType, url string, body, headers map[string]string) (string, error) {
+func (api *BlockStorageAPI) InvokeAsyncCommand(methodType, url string, body, headers map[string]string, client *http.Client) (string, error) {
 
-	result, err := MakeHTTPRequest(methodType, url, body, headers, "session", headers["Authorization"])
+	result, err := MakeHTTPRequest(methodType, url, body, headers, "session", headers["Authorization"], client)
 	if err != nil {
 		return "", err
 	}
@@ -223,7 +220,7 @@ func (api *BlockStorageAPI) InvokeAsyncCommand(methodType, url string, body, hea
 		}
 		time.Sleep(time.Duration(waitTime) * time.Second)
 
-		jobResult, err := api.checkUpdate(fmt.Sprintf("%d", int(result["jobId"].(float64))), headers)
+		jobResult, err := api.checkUpdate(fmt.Sprintf("%d", int(result["jobId"].(float64))), headers, client)
 		if err != nil {
 			klog.Errorf("Error checking job status: %v", err)
 			return "", err

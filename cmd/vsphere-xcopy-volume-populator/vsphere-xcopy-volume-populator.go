@@ -65,7 +65,7 @@ func main() {
 	var storageApi populator.StorageApi
 	switch storageVendor {
 	case "vantara":
-		sm, err := vantara.NewVantaraClonner(storageHostname, storageUsername, storagePassword)
+		sm, err := vantara.NewVantaraClonner(storageHostname, storageUsername, storagePassword, storageSkipSSLVerification == "true")
 		if err != nil {
 			klog.Fatalf("failed to initialize vantara storage mapper with %s", err)
 		}

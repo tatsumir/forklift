@@ -1,9 +1,11 @@
 package vantara
 
 import (
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"regexp"
 	"strings"
 
@@ -20,12 +22,13 @@ type VantaraStorageAPI struct {
 	UserID       string
 	Password     string
 	VantaraObj   VantaraObject
+	HTTPClient   *http.Client
 }
 
 type VantaraObject map[string]interface {
 }
 
-func NewVantaraStorageAPI(storageID, restServerIP, restSvrPort, userID, password string, vantaraObj VantaraObject) *VantaraStorageAPI {
+func NewVantaraStorageAPI(storageID, restServerIP, restSvrPort, userID, password string, vantaraObj VantaraObject, skipSSLVerification bool) *VantaraStorageAPI {
 	return &VantaraStorageAPI{
 		StorageID:    storageID,
 		RestServerIP: restServerIP,
@@ -33,6 +36,11 @@ func NewVantaraStorageAPI(storageID, restServerIP, restSvrPort, userID, password
 		UserID:       userID,
 		Password:     password,
 		VantaraObj:   vantaraObj,
+		HTTPClient: &http.Client{
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{InsecureSkipVerify: skipSSLVerification},
+			},
+		},
 	}
 }
 
@@ -115,7 +123,7 @@ func (v *VantaraStorageAPI) VantaraStorage(actionType string) (map[string]interf
 	// Check API version
 	url := api.APIVersion()
 	klog.Infof("API version URL: %s", url)
-	r, err := MakeHTTPRequest("GET", url, nil, headers, "basic", userCreds)
+	r, err := MakeHTTPRequest("GET", url, nil, headers, "basic", userCreds, v.HTTPClient)
 	if err != nil {
 		klog.Errorf("Failed to get API version: %v", err)
 		return nil, err
@@ -125,7 +133,7 @@ func (v *VantaraStorageAPI) VantaraStorage(actionType string) (map[string]interf
 
 	// Generate a session
 	url = api.GenerateSession()
-	r, err = MakeHTTPRequest("POST", url, body, headers, "basic", userCreds)
+	r, err = MakeHTTPRequest("POST", url, body, headers, "basic", userCreds, v.HTTPClient)
 	if err != nil {
 		klog.Errorf("Failed to generate session: %v", err)
 		return nil, err
@@ -134,7 +142,7 @@ func (v *VantaraStorageAPI) VantaraStorage(actionType string) (map[string]interf
 	// Discard session after the function returns
 	defer func() {
 		url = api.DiscardSession(sessionId)
-		resp, err := MakeHTTPRequest("DELETE", url, body, headers, "session", headers["Authorization"])
+		resp, err := MakeHTTPRequest("DELETE", url, body, headers, "session", headers["Authorization"], v.HTTPClient)
 		if err != nil {
 			klog.Errorf("Failed to discard session: %v", err)
 			return
@@ -153,7 +161,7 @@ func (v *VantaraStorageAPI) VantaraStorage(actionType string) (map[string]interf
 	switch actionType {
 	case GETLDEV:
 		url = api.Ldev(v.VantaraObj["ldevId"].(string))
-		r, err = MakeHTTPRequest("GET", url, nil, headers, "session", headers["Authorization"])
+		r, err = MakeHTTPRequest("GET", url, nil, headers, "session", headers["Authorization"], v.HTTPClient)
 		if err != nil {
 			klog.Errorf("Failed to get LDEV info: %v", err)
 			return nil, err
@@ -168,7 +176,7 @@ func (v *VantaraStorageAPI) VantaraStorage(actionType string) (map[string]interf
 			body["hostGroupNumber"] = parts[1]
 			bodyJson, _ := json.Marshal(body)
 			klog.Infof("Body: %s", string(bodyJson))
-			_, err := api.InvokeAsyncCommand("POST", url, body, headers)
+			_, err := api.InvokeAsyncCommand("POST", url, body, headers, v.HTTPClient)
 			if err != nil {
 				fmt.Println("Failed to add path")
 				return nil, err
@@ -178,7 +186,7 @@ func (v *VantaraStorageAPI) VantaraStorage(actionType string) (map[string]interf
 		var hostGroupId string
 		var ldevEntry LdevEntry
 		url = api.Ldev(v.VantaraObj["ldevId"].(string))
-		r, err = MakeHTTPRequest("GET", url, nil, headers, "session", headers["Authorization"])
+		r, err = MakeHTTPRequest("GET", url, nil, headers, "session", headers["Authorization"], v.HTTPClient)
 		if err != nil {
 			klog.Errorf("Failed to get LDEV info: %v", err)
 			return nil, err
@@ -194,7 +202,7 @@ func (v *VantaraStorageAPI) VantaraStorage(actionType string) (map[string]interf
 			}
 			objectID := hostGroupId + "," + lunId
 			url = api.Lun(objectID)
-			_, err = api.InvokeAsyncCommand("DELETE", url, body, headers)
+			_, err = api.InvokeAsyncCommand("DELETE", url, body, headers, v.HTTPClient)
 			if err != nil {
 				klog.Errorf("Failed to delete path: %v", err)
 				return nil, err
@@ -202,7 +210,7 @@ func (v *VantaraStorageAPI) VantaraStorage(actionType string) (map[string]interf
 		}
 	case GETPORTDETAILS:
 		url = api.Ports() + "?detailInfoType=" + "logins"
-		r, err = MakeHTTPRequest("GET", url, nil, headers, "session", headers["Authorization"])
+		r, err = MakeHTTPRequest("GET", url, nil, headers, "session", headers["Authorization"], v.HTTPClient)
 		if err != nil {
 			klog.Errorf("Failed to get port details: %v", err)
 			return nil, err
